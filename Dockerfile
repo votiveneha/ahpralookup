@@ -1,50 +1,44 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Prevent interactive prompts during builds
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install system dependencies
+# System dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
-    curl \
     gnupg \
+    curl \
     xvfb \
     libxi6 \
     libgconf-2-4 \
     libnss3 \
     libxss1 \
-    libappindicator3-1 \
     libasound2 \
     fonts-liberation \
-    libatk-bridge2.0-0 \
-    libgtk-3-0 \
-    --no-install-recommends && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    libappindicator3-1 \
+    xdg-utils \
+    libu2f-udev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome
-RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    apt install -y ./google-chrome-stable_current_amd64.deb && \
-    rm google-chrome-stable_current_amd64.deb
+# Install Chrome
+RUN curl -sSL https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
+    apt-get update && \
+    apt-get install -y google-chrome-stable
 
-# Install ChromeDriver (match with the Chrome version)
-RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+') && \
+# Install ChromeDriver matching version
+RUN CHROME_VERSION=$(google-chrome --version | grep -oP "\d+\.\d+\.\d+") && \
     DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION") && \
-    wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/$DRIVER_VERSION/chromedriver_linux64.zip" && \
-    unzip /tmp/chromedriver.zip -d /usr/local/bin/ && \
+    wget -q "https://chromedriver.storage.googleapis.com/${DRIVER_VERSION}/chromedriver_linux64.zip" && \
+    unzip chromedriver_linux64.zip && \
+    mv chromedriver /usr/local/bin/ && \
     chmod +x /usr/local/bin/chromedriver && \
-    rm /tmp/chromedriver.zip
+    rm chromedriver_linux64.zip
 
-# Install Selenium
-RUN pip install --no-cache-dir selenium
+# Install Python deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Set environment variables to run Chrome in headless mode
-ENV CHROME_BIN=/usr/bin/google-chrome
-ENV CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
+# Add project files
+COPY main.py .
 
-# Add your Python script
-COPY main.py /usr/src/app/main.py
-WORKDIR /usr/src/app
-
-# Run your script
-CMD ["python", "main.py"]
+# Run app with full logging
+CMD ["sh", "-c", "python3 main.py 2>&1 | tee /proc/1/fd/1"]
